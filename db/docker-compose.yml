@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: valo-tic-tac-toe-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: valo
+      POSTGRES_PASSWORD: valo_dev_password
+      POSTGRES_DB: valo_tic_tac_toe
+    ports:
+      - "5432:5432"
+    volumes:
+      # Datos persistentes: si apagas/borras el contenedor, la info sigue
+      # viva en este volumen con nombre, a menos que también borres el volumen.
+      - valo_pg_data:/var/lib/postgresql/data
+      # schema.sql se ejecuta UNA SOLA VEZ, automáticamente, la primera vez
+      # que el contenedor crea la base de datos desde cero (carpeta vacía).
+      # Si ya existe data en el volumen, este archivo NO se vuelve a correr.
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U valo -d valo_tic_tac_toe"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  valo_pg_data:
