@@ -50,13 +50,17 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;  -- búsqueda por similitud/parcial efic
 --
 -- Si Riot agrega un 5to rol oficial algún día, se migra con ALTER TYPE.
 -- ----------------------------------------------------------------
-CREATE TYPE player_role AS ENUM ('Duelist', 'Controller', 'Initiator', 'Sentinel', 'Flex');
+DO $$ BEGIN
+    CREATE TYPE player_role AS ENUM ('Duelist', 'Controller', 'Initiator', 'Sentinel', 'Flex');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 
 -- ----------------------------------------------------------------
 -- TEAMS
 -- ----------------------------------------------------------------
-CREATE TABLE teams (
+CREATE TABLE IF NOT EXISTS teams (
     id              SERIAL PRIMARY KEY,
     name            TEXT NOT NULL UNIQUE,       -- "Sentinels", "Paper Rex"
     tag             TEXT,                        -- "SEN", "PRX" (puede venir vacío en la fuente)
@@ -67,7 +71,7 @@ CREATE TABLE teams (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_teams_name_trgm ON teams USING gin (name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_teams_name_trgm ON teams USING gin (name gin_trgm_ops);
 
 
 -- ----------------------------------------------------------------
@@ -78,7 +82,7 @@ CREATE INDEX idx_teams_name_trgm ON teams USING gin (name gin_trgm_ops);
 -- por ahora el MVP solo usa jugadores como respuesta, pero el agente
 -- insignia de cada jugador sí se modela como categoría).
 -- ----------------------------------------------------------------
-CREATE TABLE agents (
+CREATE TABLE IF NOT EXISTS agents (
     id      SERIAL PRIMARY KEY,
     name    TEXT NOT NULL UNIQUE,     -- "harbor", "omen" (en minúsculas, como llega de la fuente)
     role    player_role NOT NULL
@@ -88,7 +92,7 @@ CREATE TABLE agents (
 -- ----------------------------------------------------------------
 -- PLAYERS
 -- ----------------------------------------------------------------
-CREATE TABLE players (
+CREATE TABLE IF NOT EXISTS players (
     id                   SERIAL PRIMARY KEY,
     alias                TEXT NOT NULL,             -- "johnqt", "TenZ" — nombre de juego, lo que se usa para responder
     real_name            TEXT,
@@ -111,18 +115,18 @@ CREATE TABLE players (
     CONSTRAINT uq_players_source UNIQUE (source_player_id)
 );
 
-CREATE INDEX idx_players_alias_trgm ON players USING gin (alias gin_trgm_ops);
-CREATE INDEX idx_players_country ON players (country_code);
-CREATE INDEX idx_players_role ON players (role);
-CREATE INDEX idx_players_current_team ON players (current_team_id);
+CREATE INDEX IF NOT EXISTS idx_players_alias_trgm ON players USING gin (alias gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_players_country ON players (country_code);
+CREATE INDEX IF NOT EXISTS idx_players_role ON players (role);
+CREATE INDEX IF NOT EXISTS idx_players_current_team ON players (current_team_id);
 
 -- Índice compuesto pensado DIRECTAMENTE para la query de intersección
 -- más común del juego: "país X + rol Y", "equipo X + país Y", etc.
 -- Postgres puede usar índices parciales de esta lista combinada según
 -- el patrón de filtro real; se agregan los 3 pares más probables.
-CREATE INDEX idx_players_country_role ON players (country_code, role);
-CREATE INDEX idx_players_team_role ON players (current_team_id, role);
-CREATE INDEX idx_players_team_country ON players (current_team_id, country_code);
+CREATE INDEX IF NOT EXISTS idx_players_country_role ON players (country_code, role);
+CREATE INDEX IF NOT EXISTS idx_players_team_role ON players (current_team_id, role);
+CREATE INDEX IF NOT EXISTS idx_players_team_country ON players (current_team_id, country_code);
 
 
 -- ----------------------------------------------------------------
@@ -134,7 +138,7 @@ CREATE INDEX idx_players_team_country ON players (current_team_id, country_code)
 -- cual en raw_team_name por ahora; team_name_clean queda nullable
 -- para cuando se decida limpiar esto (no se hace en este seed inicial).
 -- ----------------------------------------------------------------
-CREATE TABLE player_past_teams (
+CREATE TABLE IF NOT EXISTS player_past_teams (
     id              SERIAL PRIMARY KEY,
     player_id       INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     raw_team_name   TEXT NOT NULL,     -- texto crudo de la fuente, sin limpiar
@@ -143,8 +147,8 @@ CREATE TABLE player_past_teams (
     sort_order      INTEGER NOT NULL DEFAULT 0  -- preserva el orden en que vlr.gg los lista (más reciente primero)
 );
 
-CREATE INDEX idx_past_teams_player ON player_past_teams (player_id);
-CREATE INDEX idx_past_teams_raw_name_trgm ON player_past_teams USING gin (raw_team_name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_past_teams_player ON player_past_teams (player_id);
+CREATE INDEX IF NOT EXISTS idx_past_teams_raw_name_trgm ON player_past_teams USING gin (raw_team_name gin_trgm_ops);
 
 
 -- ----------------------------------------------------------------
@@ -154,7 +158,7 @@ CREATE INDEX idx_past_teams_raw_name_trgm ON player_past_teams USING gin (raw_te
 -- fetch_dataset.py (extract_titles), más el año separado para poder
 -- filtrar/ordenar sin parsear el string en cada query.
 -- ----------------------------------------------------------------
-CREATE TABLE player_titles (
+CREATE TABLE IF NOT EXISTS player_titles (
     id          SERIAL PRIMARY KEY,
     player_id   INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
     event_name  TEXT NOT NULL,         -- "Champions Tour 2024: Masters Madrid"
@@ -162,8 +166,8 @@ CREATE TABLE player_titles (
     raw_label   TEXT NOT NULL           -- "Champions Tour 2024: Masters Madrid (2024)", tal cual vino del dataset
 );
 
-CREATE INDEX idx_titles_player ON player_titles (player_id);
-CREATE INDEX idx_titles_event_name_trgm ON player_titles USING gin (event_name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_titles_player ON player_titles (player_id);
+CREATE INDEX IF NOT EXISTS idx_titles_event_name_trgm ON player_titles USING gin (event_name gin_trgm_ops);
 
 
 -- ----------------------------------------------------------------
@@ -177,13 +181,21 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_teams_updated_at
-    BEFORE UPDATE ON teams
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_teams_updated_at') THEN
+        CREATE TRIGGER trg_teams_updated_at
+            BEFORE UPDATE ON teams
+            FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+    END IF;
+END $$;
 
-CREATE TRIGGER trg_players_updated_at
-    BEFORE UPDATE ON players
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_players_updated_at') THEN
+        CREATE TRIGGER trg_players_updated_at
+            BEFORE UPDATE ON players
+            FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+    END IF;
+END $$;
 
 
 -- ============================================================

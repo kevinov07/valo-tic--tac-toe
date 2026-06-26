@@ -73,14 +73,23 @@ type majorTitleFn func(string) bool
 var majorTitleChecks = []majorTitleFn{
 	// Masters internacionales: "Champions Tour X: Masters Madrid (2024)" ✓
 	// Regionales: "CIS Stage 1: Masters (2021)" ✗
+	// No-eventos: "Shanghai Esports Masters 2024 (2024)" ✗
 	func(s string) bool {
 		i := strings.Index(s, "Masters")
 		if i < 0 {
 			return false
 		}
-		// Si después de "Masters" viene " (" no hay locación → regional
 		after := s[i+len("Masters"):]
-		return !strings.HasPrefix(after, " (")
+		// "Masters (2021)" o "Masters 2024" → sin locación → inválido
+		if strings.HasPrefix(after, " (") {
+			return false
+		}
+		trimmed := strings.TrimSpace(after)
+		if trimmed == "" {
+			return false
+		}
+		// Si después de "Masters" viene un dígito (año) → inválido
+		return trimmed[0] < '0' || trimmed[0] > '9'
 	},
 	// World championship: "Valorant Champions X" o ": Champions"
 	func(s string) bool { return strings.Contains(s, "Valorant Champions") || strings.Contains(s, ": Champions") },

@@ -295,13 +295,13 @@ func sameKind(a, b model.Category) bool {
 // posiciones del orden barajado y el backtracking las elige primero.
 var categoryWeights = map[model.CategoryKind]int{
 	model.KindCurrentTeam: 3,
-	model.KindPastTeam:    1, // la más baja: equipos pasados son difíciles
+	model.KindPastTeam:    2, // la más baja: equipos pasados son difíciles
 	model.KindCountry:     5, // alta: mucha intersección con otras categorías
 	model.KindRole:        5, // alta: mucha intersección con otras categorías
 	model.KindIsCaptain:   2,
 	model.KindTeammate:    2,
 	model.KindAgent:       4, // alta: muchos agentes, buena intersección
-	model.KindTitle:       3,
+	model.KindTitle:       7,
 }
 
 // weightedShuffle baraja categorías usando pesos: cada categoría aparece
