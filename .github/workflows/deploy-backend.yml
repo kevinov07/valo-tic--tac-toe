@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  packages: write
+
 env:
   AZURE_WEBAPP_NAME: valo-ttt-backend
   DOCKER_IMAGE: ghcr.io/${{ github.repository }}/backend
