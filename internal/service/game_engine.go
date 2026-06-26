@@ -56,6 +56,14 @@ type CellState struct {
 	PlayerAlias string // alias con el que se respondió correctamente, si Answered=true
 	TeamName    string // dato adicional para mostrar en el frontend al acertar
 	AvatarURL   string // URL del avatar del jugador
+
+	// Multiplayer (steal mechanic): la celda siempre muestra la respuesta más reciente.
+	// LastGuessAlias es el alias del último intento (correcto o incorrecto).
+	// LastGuessWrong indica si el último intento fue incorrecto.
+	// OwnerPlayer es el jugador que acertó correctamente más recientemente (-1 = ninguno).
+	LastGuessAlias string
+	LastGuessWrong bool
+	OwnerPlayer    int
 }
 
 // GameEngine agrupa la lógica de generación y validación de tableros.
@@ -380,7 +388,13 @@ func (e *GameEngine) GenerateBoard(id string) (*Board, error) {
 		// y deja la invariante "todo tablero devuelto es 100% jugable"
 		// blindada ante futuros cambios en la lógica incremental.
 		if boardIsFullyValid(players, rows, cols, teammateMap) {
-			return &Board{ID: id, Rows: rows, Cols: cols}, nil
+			board := &Board{ID: id, Rows: rows, Cols: cols}
+			for i := range board.Cells {
+				for j := range board.Cells[i] {
+					board.Cells[i][j].OwnerPlayer = -1
+				}
+			}
+			return board, nil
 		}
 	}
 
@@ -524,5 +538,37 @@ func (e *GameEngine) CheckGuess(b *Board, row, col int, playerAlias string) (cor
 	}
 
 	// Alias no encontrado entre los jugadores conocidos.
+	return false, nil, nil
+}
+
+// VerifyGuess valida si playerAlias cumple la celda (row, col) del tablero,
+// pero NO modifica el estado de la celda y NO rechaza celdas ya respondidas.
+// Es la versión para el multiplayer con steal, donde cualquier celda se puede
+// volver a responder en cualquier momento.
+func (e *GameEngine) VerifyGuess(b *Board, row, col int, playerAlias string) (correct bool, matchedPlayer *model.Player, err error) {
+	if row < 0 || row >= boardSize || col < 0 || col >= boardSize {
+		return false, nil, ErrInvalidCell
+	}
+
+	players, err := e.store.AllPlayers()
+	if err != nil {
+		return false, nil, err
+	}
+
+	teammateMap := buildTeammateMap(players)
+	rowCat := b.Rows[row]
+	colCat := b.Cols[col]
+
+	for i := range players {
+		p := players[i]
+		if p.Alias != playerAlias {
+			continue
+		}
+		if playerMatchesCategory(p, rowCat, teammateMap) && playerMatchesCategory(p, colCat, teammateMap) {
+			return true, &p, nil
+		}
+		return false, nil, nil
+	}
+
 	return false, nil, nil
 }

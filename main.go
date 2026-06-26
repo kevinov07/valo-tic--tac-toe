@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/joho/godotenv"
 
 	"valo-tic-tac-toe-backend/internal/handler"
 	"valo-tic-tac-toe-backend/internal/repository"
@@ -22,11 +24,14 @@ import (
 )
 
 func main() {
+	_ = godotenv.Load() // .env opcional, no falla si no existe
+
 	addr := envOrDefault("ADDR", ":8080")
-	databaseURL := envOrDefault(
-		"DATABASE_URL",
-		"postgres://valo:valo_dev_password@localhost:5432/valo_tic_tac_toe?sslmode=disable",
-	)
+
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		log.Fatal("DATABASE_URL es requerida (defínela en .env o en variables de entorno)")
+	}
 
 	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {
@@ -48,6 +53,8 @@ func main() {
 	engine := service.NewGameEngine(playerRepo, nil)
 	gameHandler := handler.NewGameHandler(engine)
 	playerHandler := handler.NewPlayerHandler(playerRepo)
+	roomManager := service.NewRoomManager(engine)
+	wsHandler := handler.NewWSHandler(roomManager)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -55,8 +62,9 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
+	corsOrigins := envOrDefault("CORS_ORIGINS", "https://valo-tic-tac-toe-app.pages.dev")
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"*"},
+		AllowedOrigins:   strings.Split(corsOrigins, ","),
 		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		AllowCredentials: false,
@@ -68,6 +76,8 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
+
+	r.Get("/ws", wsHandler.HandleWS)
 
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/players", playerHandler.Search)

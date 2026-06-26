@@ -33,10 +33,13 @@ type categoryResponse struct {
 }
 
 type cellResponse struct {
-	Answered    bool   `json:"answered"`
-	PlayerAlias string `json:"player_alias,omitempty"`
-	TeamName    string `json:"team_name,omitempty"`
-	AvatarURL   string `json:"avatar_url,omitempty"`
+	Answered       bool   `json:"answered"`
+	PlayerAlias    string `json:"player_alias,omitempty"`
+	TeamName       string `json:"team_name,omitempty"`
+	AvatarURL      string `json:"avatar_url,omitempty"`
+	LastGuessAlias string `json:"last_guess_alias,omitempty"`
+	LastGuessWrong bool   `json:"last_guess_wrong"`
+	OwnerPlayer    int    `json:"owner_player,omitempty"`
 }
 
 type boardResponse struct {
@@ -168,10 +171,13 @@ func toBoardResponse(b *service.Board) boardResponse {
 		resp.Cells[i] = make([]cellResponse, len(row))
 		for j, cell := range row {
 			resp.Cells[i][j] = cellResponse{
-				Answered:    cell.Answered,
-				PlayerAlias: cell.PlayerAlias,
-				TeamName:    cell.TeamName,
-				AvatarURL:   cell.AvatarURL,
+				Answered:       cell.Answered,
+				PlayerAlias:    cell.PlayerAlias,
+				TeamName:       cell.TeamName,
+				AvatarURL:      cell.AvatarURL,
+				LastGuessAlias: cell.LastGuessAlias,
+				LastGuessWrong: cell.LastGuessWrong,
+				OwnerPlayer:    cell.OwnerPlayer,
 			}
 		}
 	}

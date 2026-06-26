@@ -3,5 +3,6 @@ venv/
 __pycache__/
 dataset.json
 main
+main.exe
 deploy/
 db/venv/
