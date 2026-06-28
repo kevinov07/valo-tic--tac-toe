@@ -28,6 +28,7 @@ type Player struct {
 	SignatureAgentName string
 	IsCaptain          bool
 	AvatarURL          string
+	CurrentTeamLogo    string   // URL del logo del equipo actual
 	PastTeamNames      []string // equipos anteriores del jugador
 	Titles             []string // títulos ganados (raw_label de player_titles)
 }
@@ -37,6 +38,7 @@ type Team struct {
 	ID   int64
 	Name string
 	Tag  string
+	Logo string
 }
 
 // CategoryKind identifica qué tipo de atributo evalúa una categoría.
@@ -73,4 +75,7 @@ type Category struct {
 	// Se separa de Value porque Value debe ser estable para matchear
 	// contra la BD, mientras Label puede cambiar de redacción libremente.
 	Label string
+	// ImageUrl es una URL opcional a una imagen representativa (bandera,
+	// logo de equipo, etc.) para mostrar en la celda de categoría.
+	ImageUrl string
 }

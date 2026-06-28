@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"math/rand"
+	"strings"
 
 	"valo-tic-tac-toe-backend/internal/model"
 )
@@ -87,7 +88,7 @@ func NewGameEngine(store PlayerStore, rng *rand.Rand) *GameEngine {
 // una por cada equipo pasado distinto, una por cada país distinto, una por
 // cada rol distinto (excluyendo nil), y una por cada jugador que tenga
 // compañeros de equipo (teammate).
-func candidateCategories(players []model.Player, teammateMap map[string]map[string]bool) []model.Category {
+func candidateCategories(players []model.Player, teammateMap map[string]map[string]bool, teamLogoMap map[string]string) []model.Category {
 	seenTeams := map[string]bool{}
 	seenPastTeams := map[string]bool{}
 	seenCountries := map[string]bool{}
@@ -100,17 +101,20 @@ func candidateCategories(players []model.Player, teammateMap map[string]map[stri
 		if p.CurrentTeamName != "" && !seenTeams[p.CurrentTeamName] {
 			seenTeams[p.CurrentTeamName] = true
 			categories = append(categories, model.Category{
-				Kind:  model.KindCurrentTeam,
-				Value: p.CurrentTeamName,
-				Label: "Juega en " + p.CurrentTeamName,
+				Kind:     model.KindCurrentTeam,
+				Value:    p.CurrentTeamName,
+				Label:    "Juega en " + p.CurrentTeamName,
+				ImageUrl: p.CurrentTeamLogo,
 			})
 		}
 		if p.CountryCode != "" && !seenCountries[p.CountryCode] {
 			seenCountries[p.CountryCode] = true
+			code := strings.ToLower(p.CountryCode)
 			categories = append(categories, model.Category{
-				Kind:  model.KindCountry,
-				Value: p.CountryCode,
-				Label: "País: " + toUpper(p.CountryCode),
+				Kind:     model.KindCountry,
+				Value:    p.CountryCode,
+				Label:    "País: " + toUpper(p.CountryCode),
+				ImageUrl: "https://flagcdn.com/w80/" + code + ".png",
 			})
 		}
 		if p.Role != nil && !seenRoles[*p.Role] {
@@ -133,10 +137,12 @@ func candidateCategories(players []model.Player, teammateMap map[string]map[stri
 		for _, pt := range p.PastTeamNames {
 			if pt != "" && !seenPastTeams[pt] {
 				seenPastTeams[pt] = true
+				logo := teamLogoMap[pt]
 				categories = append(categories, model.Category{
-					Kind:  model.KindPastTeam,
-					Value: pt,
-					Label: "Jugó en " + pt,
+					Kind:     model.KindPastTeam,
+					Value:    pt,
+					Label:    "Jugó en " + pt,
+					ImageUrl: logo,
 				})
 			}
 		}
@@ -163,9 +169,10 @@ func candidateCategories(players []model.Player, teammateMap map[string]map[stri
 		if len(teammateMap[p.Alias]) > 0 && !seenTeammate[p.Alias] {
 			seenTeammate[p.Alias] = true
 			categories = append(categories, model.Category{
-				Kind:  model.KindTeammate,
-				Value: p.Alias,
-				Label: "Juega con " + p.Alias,
+				Kind:     model.KindTeammate,
+				Value:    p.Alias,
+				Label:    "Juega con " + p.Alias,
+				ImageUrl: p.AvatarURL,
 			})
 		}
 	}
@@ -303,13 +310,13 @@ func sameKind(a, b model.Category) bool {
 // posiciones del orden barajado y el backtracking las elige primero.
 var categoryWeights = map[model.CategoryKind]int{
 	model.KindCurrentTeam: 3,
-	model.KindPastTeam:    2, // la más baja: equipos pasados son difíciles
+	model.KindPastTeam:    3, // la más baja: equipos pasados son difíciles
 	model.KindCountry:     5, // alta: mucha intersección con otras categorías
 	model.KindRole:        5, // alta: mucha intersección con otras categorías
 	model.KindIsCaptain:   2,
 	model.KindTeammate:    2,
 	model.KindAgent:       4, // alta: muchos agentes, buena intersección
-	model.KindTitle:       7,
+	model.KindTitle:       6,
 }
 
 // weightedShuffle baraja categorías usando pesos: cada categoría aparece
@@ -372,7 +379,13 @@ func (e *GameEngine) GenerateBoard(id string) (*Board, error) {
 	}
 
 	teammateMap := buildTeammateMap(players)
-	candidates := candidateCategories(players, teammateMap)
+	teamLogoMap := make(map[string]string, len(players))
+	for _, p := range players {
+		if p.CurrentTeamName != "" && p.CurrentTeamLogo != "" {
+			teamLogoMap[p.CurrentTeamName] = p.CurrentTeamLogo
+		}
+	}
+	candidates := candidateCategories(players, teammateMap, teamLogoMap)
 	if len(candidates) < boardSize*2 {
 		return nil, ErrCannotGenerateBoard
 	}

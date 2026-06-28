@@ -12,6 +12,7 @@ import (
 // vctTeamNames son los equipos VCT International League que usamos como
 // filtro para equipos pasados.
 var vctTeamNames = []string{
+	// VCT Americas
 	"100 Thieves",
 	"Cloud9",
 	"FURIA",
@@ -22,6 +23,9 @@ var vctTeamNames = []string{
 	"MIBR",
 	"NRG",
 	"Sentinels",
+	"Envy",
+	"Evil Geniuses",
+	// VCT EMEA
 	"BBL Esports",
 	"FNATIC",
 	"FUT Esports",
@@ -30,6 +34,11 @@ var vctTeamNames = []string{
 	"Natus Vincere",
 	"Team Heretics",
 	"Team Vitality",
+	"Team Liquid",
+	"Gentle Mates",
+	"PCIFIC Esports",
+	"Eternal Fire",
+	// VCT Pacific
 	"DetonatioN FocusMe",
 	"Gen.G",
 	"Global Esports",
@@ -37,16 +46,20 @@ var vctTeamNames = []string{
 	"Paper Rex",
 	"Rex Regum Qeon",
 	"T1",
-	"Talon Esports",
 	"Team Secret",
 	"ZETA DIVISION",
+	"FULL SENSE",
+	"Nongshim RedForce",
+	"VARREL",
+
+	// VCT China
 	"All Gamers",
 	"Bilibili Gaming",
 	"Dragon Ranger Gaming",
 	"Edward Gaming",
 	"FunPlus Phoenix",
 	"JDG Esports",
-	"LNG Esports",
+	"Xi Lai Gaming",
 	"Nova Esports",
 	"Titan Esports Club",
 	"Trace Esports",
@@ -92,7 +105,9 @@ var majorTitleChecks = []majorTitleFn{
 		return trimmed[0] < '0' || trimmed[0] > '9'
 	},
 	// World championship: "Valorant Champions X" o ": Champions"
-	func(s string) bool { return strings.Contains(s, "Valorant Champions") || strings.Contains(s, ": Champions") },
+	func(s string) bool {
+		return strings.Contains(s, "Valorant Champions") || strings.Contains(s, ": Champions")
+	},
 	// LOCK//IN
 	func(s string) bool { return strings.Contains(s, "LOCK//IN") || strings.Contains(s, "LOCK IN") },
 	// VCT regional: VCT + una de las 4 regiones
@@ -137,6 +152,7 @@ func (r *PlayerRepository) AllPlayers() ([]model.Player, error) {
 			COALESCE(p.country_code, ''),
 			COALESCE(p.current_team_id, 0),
 			COALESCE(t.name, ''),
+			COALESCE(t.logo, ''),
 			p.role::text,
 			COALESCE(a.name, ''),
 			p.is_captain,
@@ -166,6 +182,7 @@ func (r *PlayerRepository) AllPlayers() ([]model.Player, error) {
 			&p.CountryCode,
 			&p.CurrentTeamID,
 			&p.CurrentTeamName,
+			&p.CurrentTeamLogo,
 			&role,
 			&p.SignatureAgentName,
 			&p.IsCaptain,
@@ -307,6 +324,7 @@ func (r *PlayerRepository) SearchPlayers(query string, limit int) ([]model.Playe
 			COALESCE(p.country_code, ''),
 			COALESCE(p.current_team_id, 0),
 			COALESCE(t.name, ''),
+			COALESCE(t.logo, ''),
 			p.role::text,
 			COALESCE(a.name, ''),
 			p.is_captain,
@@ -340,6 +358,7 @@ func (r *PlayerRepository) SearchPlayers(query string, limit int) ([]model.Playe
 			&p.CountryCode,
 			&p.CurrentTeamID,
 			&p.CurrentTeamName,
+			&p.CurrentTeamLogo,
 			&role,
 			&p.SignatureAgentName,
 			&p.IsCaptain,

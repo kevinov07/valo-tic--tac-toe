@@ -59,7 +59,7 @@ func realDatasetSample() []model.Player {
 func TestCandidateCategories_DerivesFromRealData(t *testing.T) {
 	players := realDatasetSample()
 	teammateMap := buildTeammateMap(players)
-	cats := candidateCategories(players, teammateMap)
+	cats := candidateCategories(players, teammateMap, nil)
 
 	got := map[model.CategoryKind]int{}
 	for _, c := range cats {

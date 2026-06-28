@@ -49,10 +49,11 @@ def upsert_team(cur, team: dict) -> int:
     """Inserta o actualiza un equipo por nombre (UNIQUE). Devuelve su id."""
     cur.execute(
         """
-        INSERT INTO teams (name, tag, country, vlr_rank, source_team_id)
-        VALUES (%(name)s, %(tag)s, %(country)s, %(vlr_rank)s, %(source_team_id)s)
+        INSERT INTO teams (name, tag, logo, country, vlr_rank, source_team_id)
+        VALUES (%(name)s, %(tag)s, %(logo)s, %(country)s, %(vlr_rank)s, %(source_team_id)s)
         ON CONFLICT (name) DO UPDATE SET
             tag = EXCLUDED.tag,
+            logo = EXCLUDED.logo,
             country = EXCLUDED.country,
             vlr_rank = EXCLUDED.vlr_rank,
             source_team_id = EXCLUDED.source_team_id
@@ -61,6 +62,7 @@ def upsert_team(cur, team: dict) -> int:
         {
             "name": team["name"],
             "tag": team.get("tag") or None,
+            "logo": team.get("logo_url") or None,
             "country": team.get("country") or None,
             "vlr_rank": team.get("vlr_rank") or None,
             "source_team_id": team.get("source_team_id") or None,

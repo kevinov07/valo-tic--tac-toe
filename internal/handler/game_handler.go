@@ -27,9 +27,10 @@ func NewGameHandler(engine *service.GameEngine) *GameHandler {
 }
 
 type categoryResponse struct {
-	Kind  model.CategoryKind `json:"kind"`
-	Value string             `json:"value"`
-	Label string             `json:"label"`
+	Kind     model.CategoryKind `json:"kind"`
+	Value    string             `json:"value"`
+	Label    string             `json:"label"`
+	ImageUrl string             `json:"image_url,omitempty"`
 }
 
 type cellResponse struct {
@@ -153,17 +154,19 @@ func toBoardResponse(b *service.Board) boardResponse {
 
 	for i, row := range b.Rows {
 		resp.Rows[i] = categoryResponse{
-			Kind:  row.Kind,
-			Value: row.Value,
-			Label: row.Label,
+			Kind:     row.Kind,
+			Value:    row.Value,
+			Label:    row.Label,
+			ImageUrl: row.ImageUrl,
 		}
 	}
 
 	for i, col := range b.Cols {
 		resp.Cols[i] = categoryResponse{
-			Kind:  col.Kind,
-			Value: col.Value,
-			Label: col.Label,
+			Kind:     col.Kind,
+			Value:    col.Value,
+			Label:    col.Label,
+			ImageUrl: col.ImageUrl,
 		}
 	}
 

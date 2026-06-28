@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS teams (
     id              SERIAL PRIMARY KEY,
     name            TEXT NOT NULL UNIQUE,       -- "Sentinels", "Paper Rex"
     tag             TEXT,                        -- "SEN", "PRX" (puede venir vacío en la fuente)
+    logo            TEXT,                        -- URL del logo del equipo
     country         TEXT,                        -- "United States", "Europe" (la fuente mezcla país/región aquí)
     vlr_rank        TEXT,                         -- ranking de vlr.gg al momento del seed; informativo, no se usa para queries de juego
     source_team_id  TEXT,                         -- id del equipo en vlrggapi, para poder re-sincronizar después

@@ -23,6 +23,22 @@ with conn.cursor() as cur:
 conn.close()
 print("✓ Schema aplicado")
 
+# 2. Migrations
+migrations_dir = os.path.join(os.path.dirname(__file__), "migrations")
+if os.path.isdir(migrations_dir):
+    migrations = sorted(os.listdir(migrations_dir))
+    if migrations:
+        conn = psycopg2.connect(dsn)
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            for m in migrations:
+                if m.endswith(".sql"):
+                    path = os.path.join(migrations_dir, m)
+                    with open(path, encoding="utf-8") as f:
+                        cur.execute(f.read())
+                    print(f"✓ Migración {m} aplicada")
+        conn.close()
+
 # 2. Seed
 dataset_path = os.path.abspath(
     r"..\..\valo-tic-tac-toe-data-fetch\dataset.json"
