@@ -68,7 +68,7 @@ type guessRequest struct {
 func (h *GameHandler) CreateGame(w http.ResponseWriter, r *http.Request) {
 	id := uuid.NewString()
 
-	board, err := h.engine.GenerateBoard(id)
+	board, err := h.engine.GenerateBoard(id, model.DefaultGameConfig())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return

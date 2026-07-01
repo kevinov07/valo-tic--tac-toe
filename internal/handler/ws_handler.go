@@ -11,6 +11,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"valo-tic-tac-toe-backend/internal/model"
 	"valo-tic-tac-toe-backend/internal/service"
 )
 
@@ -42,29 +43,35 @@ var upgrader = websocket.Upgrader{
 }
 
 type wsMessage struct {
-	Type        string `json:"type"`
-	Code        string `json:"code,omitempty"`
-	Row         int    `json:"row,omitempty"`
-	Col         int    `json:"col,omitempty"`
-	PlayerAlias string `json:"player_alias,omitempty"`
+	Type         string   `json:"type"`
+	Code         string   `json:"code,omitempty"`
+	Row          int      `json:"row,omitempty"`
+	Col          int      `json:"col,omitempty"`
+	PlayerAlias  string   `json:"player_alias,omitempty"`
+	StealEnabled *bool    `json:"steal_enabled,omitempty"`
+	Categories   []string `json:"categories,omitempty"`
+	Leagues      []string `json:"leagues,omitempty"`
 }
 
 type wsResponse struct {
-	Type        string        `json:"type"`
-	Code        string        `json:"code,omitempty"`
-	PlayerIndex int           `json:"player_index"`
-	YourTurn    *bool         `json:"your_turn,omitempty"`
-	Board       any           `json:"board,omitempty"`
-	Row         int           `json:"row"`
-	Col         int           `json:"col"`
-	Correct     *bool         `json:"correct,omitempty"`
-	PlayerAlias string        `json:"player_alias,omitempty"`
-	TeamName    string        `json:"team_name,omitempty"`
-	AvatarURL   string        `json:"avatar_url,omitempty"`
-	Winner      int           `json:"winner"`
-	WinLine     []int         `json:"win_line,omitempty"`
-	FromPlayer  int           `json:"from_player,omitempty"`
-	Message     string        `json:"message,omitempty"`
+	Type         string        `json:"type"`
+	Code         string        `json:"code,omitempty"`
+	PlayerIndex  int           `json:"player_index"`
+	YourTurn     *bool         `json:"your_turn,omitempty"`
+	Board        any           `json:"board,omitempty"`
+	Row          int           `json:"row"`
+	Col          int           `json:"col"`
+	Correct      *bool         `json:"correct,omitempty"`
+	PlayerAlias  string        `json:"player_alias,omitempty"`
+	TeamName     string        `json:"team_name,omitempty"`
+	AvatarURL    string        `json:"avatar_url,omitempty"`
+	Winner       int           `json:"winner"`
+	WinLine      []int         `json:"win_line,omitempty"`
+	FromPlayer   int           `json:"from_player,omitempty"`
+	Message      string        `json:"message,omitempty"`
+	StealEnabled *bool         `json:"steal_enabled,omitempty"`
+	Categories   []string      `json:"categories,omitempty"`
+	Leagues      []string      `json:"leagues,omitempty"`
 }
 
 type playerConn struct {
@@ -122,7 +129,20 @@ func (h *WSHandler) HandleWS(w http.ResponseWriter, r *http.Request) {
 
 		switch msg.Type {
 		case "create_room":
-			room, err := h.roomManager.CreateRoom()
+			config := model.DefaultGameConfig()
+			if msg.StealEnabled != nil {
+				config.StealEnabled = *msg.StealEnabled
+			}
+			if len(msg.Categories) > 0 {
+				for _, k := range msg.Categories {
+					config.Categories = append(config.Categories, model.CategoryKind(k))
+				}
+			}
+			if len(msg.Leagues) > 0 {
+				config.Leagues = msg.Leagues
+			}
+
+			room, err := h.roomManager.CreateRoom(config)
 			if err != nil {
 				log.Printf("[ws] error create_room: %v", err)
 				h.send(conn, wsResponse{Type: "error", Message: err.Error()})
@@ -131,13 +151,17 @@ func (h *WSHandler) HandleWS(w http.ResponseWriter, r *http.Request) {
 			currentRoom = room.Code
 			currentPlayerIdx = 0
 			h.registerConn(room.Code, 0, conn)
-			log.Printf("[ws] sala %s creada por %s", room.Code, r.RemoteAddr)
+			log.Printf("[ws] sala %s creada por %s con config=%+v", room.Code, r.RemoteAddr, config)
 			notYourTurn := false
+			stealEnabled := config.StealEnabled
 			h.send(conn, wsResponse{
-				Type:        "room_created",
-				Code:        room.Code,
-				PlayerIndex: 0,
-				YourTurn:    &notYourTurn,
+				Type:         "room_created",
+				Code:         room.Code,
+				PlayerIndex:  0,
+				YourTurn:     &notYourTurn,
+				StealEnabled: &stealEnabled,
+				Categories:   msg.Categories,
+				Leagues:      msg.Leagues,
 			})
 
 		case "join_room":
@@ -154,22 +178,33 @@ func (h *WSHandler) HandleWS(w http.ResponseWriter, r *http.Request) {
 
 			boardResp := boardToResponse(room.Board)
 			yourTurn := idx == room.Turn
+			stealEnabled := room.Config.StealEnabled
+			categories := make([]string, len(room.Config.Categories))
+			for i, k := range room.Config.Categories {
+				categories[i] = string(k)
+			}
 
 			h.send(conn, wsResponse{
-				Type:        "room_joined",
-				Code:        room.Code,
-				PlayerIndex: idx,
-				Board:       boardResp,
-				YourTurn:    &yourTurn,
+				Type:         "room_joined",
+				Code:         room.Code,
+				PlayerIndex:  idx,
+				Board:        boardResp,
+				YourTurn:     &yourTurn,
+				StealEnabled: &stealEnabled,
+				Categories:   categories,
+				Leagues:      room.Config.Leagues,
 			})
 			log.Printf("[ws] enviado room_joined a jugador %d en sala %s (yourTurn=%v)", idx, room.Code, yourTurn)
 
 			if other := h.getConn(room.Code, 0); other != nil {
 				otherTurn := 0 == room.Turn
 				h.send(other.conn, wsResponse{
-					Type:     "opponent_joined",
-					Board:    boardResp,
-					YourTurn: &otherTurn,
+					Type:         "opponent_joined",
+					Board:        boardResp,
+					YourTurn:     &otherTurn,
+					StealEnabled: &stealEnabled,
+					Categories:   categories,
+					Leagues:      room.Config.Leagues,
 				})
 				log.Printf("[ws] enviado opponent_joined a jugador 0 en sala %s (yourTurn=%v)", room.Code, otherTurn)
 			} else {

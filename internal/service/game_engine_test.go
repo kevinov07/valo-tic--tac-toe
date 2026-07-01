@@ -59,7 +59,7 @@ func realDatasetSample() []model.Player {
 func TestCandidateCategories_DerivesFromRealData(t *testing.T) {
 	players := realDatasetSample()
 	teammateMap := buildTeammateMap(players)
-	cats := candidateCategories(players, teammateMap, nil)
+	cats := candidateCategories(players, teammateMap, nil, model.DefaultGameConfig())
 
 	got := map[model.CategoryKind]int{}
 	for _, c := range cats {
@@ -145,7 +145,7 @@ func TestGenerateBoard_AllCellsHaveValidAnswer(t *testing.T) {
 	store := &fakePlayerStore{players: realDatasetSample()}
 	engine := NewGameEngine(store, rand.New(rand.NewSource(42)))
 
-	board, err := engine.GenerateBoard("test-game-1")
+	board, err := engine.GenerateBoard("test-game-1", model.DefaultGameConfig())
 	if err != nil {
 		t.Fatalf("no se esperaba error generando el tablero: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestGenerateBoard_NoDuplicateCategoriesWithinRowsOrCols(t *testing.T) {
 	store := &fakePlayerStore{players: realDatasetSample()}
 	engine := NewGameEngine(store, rand.New(rand.NewSource(7)))
 
-	board, err := engine.GenerateBoard("test-game-2")
+	board, err := engine.GenerateBoard("test-game-2", model.DefaultGameConfig())
 	if err != nil {
 		t.Fatalf("no se esperaba error: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestGenerateBoard_FailsGracefullyWithTooFewPlayers(t *testing.T) {
 	}}
 	engine := NewGameEngine(store, rand.New(rand.NewSource(1)))
 
-	_, err := engine.GenerateBoard("test-game-3")
+	_, err := engine.GenerateBoard("test-game-3", model.DefaultGameConfig())
 	if err != ErrCannotGenerateBoard {
 		t.Errorf("se esperaba ErrCannotGenerateBoard, se obtuvo: %v", err)
 	}

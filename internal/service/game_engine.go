@@ -37,7 +37,90 @@ var (
 
 	// ErrInvalidCell se devuelve si row/col están fuera de rango [0,2].
 	ErrInvalidCell = errors.New("fila o columna fuera de rango (debe ser 0, 1 o 2)")
+
+	// ErrAliasAlreadyGuessed se devuelve si el alias ya se intentó en esa celda.
+	ErrAliasAlreadyGuessed = errors.New("ese alias ya se intentó en esta celda")
 )
+
+// teamLeagueMap asigna cada equipo VCT International League a su liga.
+var teamLeagueMap = map[string]string{
+	// VCT Americas
+	"100 Thieves":           "americas",
+	"Cloud9":                "americas",
+	"FURIA":                 "americas",
+	"G2 Esports":            "americas",
+	"KRÜ Esports":           "americas",
+	"Leviatán":              "americas",
+	"LOUD":                  "americas",
+	"MIBR":                  "americas",
+	"NRG":                   "americas",
+	"Sentinels":             "americas",
+	"Envy":                  "americas",
+	"Evil Geniuses":         "americas",
+	// VCT EMEA
+	"BBL Esports":           "emea",
+	"FNATIC":                "emea",
+	"FUT Esports":           "emea",
+	"GIANTX":                "emea",
+	"Karmine Corp":          "emea",
+	"Natus Vincere":         "emea",
+	"Team Heretics":         "emea",
+	"Team Vitality":         "emea",
+	"Team Liquid":           "emea",
+	"Gentle Mates":          "emea",
+	"PCIFIC Esports":        "emea",
+	"Eternal Fire":          "emea",
+	// VCT Pacific
+	"DetonatioN FocusMe":    "pacific",
+	"Gen.G":                 "pacific",
+	"Global Esports":        "pacific",
+	"KIWOOM DRX":            "pacific",
+	"Paper Rex":             "pacific",
+	"Rex Regum Qeon":        "pacific",
+	"T1":                    "pacific",
+	"Team Secret":           "pacific",
+	"ZETA DIVISION":         "pacific",
+	"FULL SENSE":            "pacific",
+	"Nongshim RedForce":     "pacific",
+	"VARREL":                "pacific",
+	// VCT China
+	"All Gamers":            "china",
+	"Bilibili Gaming":       "china",
+	"Dragon Ranger Gaming":  "china",
+	"Edward Gaming":         "china",
+	"FunPlus Phoenix":       "china",
+	"JDG Esports":           "china",
+	"Xi Lai Gaming":         "china",
+	"Nova Esports":          "china",
+	"Titan Esports Club":    "china",
+	"Trace Esports":         "china",
+	"TyLoo":                 "china",
+	"Wolves Esports":        "china",
+}
+
+func teamLeague(name string) string {
+	if name == "" {
+		return ""
+	}
+	return teamLeagueMap[name]
+}
+
+func filterPlayersByLeague(players []model.Player, leagues []string) []model.Player {
+	if len(leagues) == 0 {
+		return players
+	}
+	leagueSet := make(map[string]bool, len(leagues))
+	for _, l := range leagues {
+		leagueSet[l] = true
+	}
+	filtered := make([]model.Player, 0, len(players))
+	for _, p := range players {
+		if leagueSet[teamLeague(p.CurrentTeamName)] {
+			filtered = append(filtered, p)
+		}
+	}
+	return filtered
+}
 
 const boardSize = 3
 
@@ -45,10 +128,11 @@ const boardSize = 3
 // y el estado de cada una de las 9 celdas. Vive en memoria (ver decisión
 // del usuario: sin persistencia en Postgres para el MVP).
 type Board struct {
-	ID    string
-	Rows  [boardSize]model.Category
-	Cols  [boardSize]model.Category
-	Cells [boardSize][boardSize]CellState
+	ID      string
+	Rows    [boardSize]model.Category
+	Cols    [boardSize]model.Category
+	Cells   [boardSize][boardSize]CellState
+	Players []model.Player // jugadores activos con los que se generó el tablero
 }
 
 // CellState es el estado de una celda individual del tablero.
@@ -62,9 +146,10 @@ type CellState struct {
 	// LastGuessAlias es el alias del último intento (correcto o incorrecto).
 	// LastGuessWrong indica si el último intento fue incorrecto.
 	// OwnerPlayer es el jugador que acertó correctamente más recientemente (-1 = ninguno).
-	LastGuessAlias string
-	LastGuessWrong bool
-	OwnerPlayer    int
+	LastGuessAlias    string
+	LastGuessWrong    bool
+	OwnerPlayer       int
+	AllGuessedAliases []string // todos los alias que se han intentado en esta celda
 }
 
 // GameEngine agrupa la lógica de generación y validación de tableros.
@@ -88,7 +173,18 @@ func NewGameEngine(store PlayerStore, rng *rand.Rand) *GameEngine {
 // una por cada equipo pasado distinto, una por cada país distinto, una por
 // cada rol distinto (excluyendo nil), y una por cada jugador que tenga
 // compañeros de equipo (teammate).
-func candidateCategories(players []model.Player, teammateMap map[string]map[string]bool, teamLogoMap map[string]string) []model.Category {
+// Si config.Categories no está vacío, solo incluye categorías de esos kinds.
+func candidateCategories(players []model.Player, teammateMap map[string]map[string]bool, teamLogoMap map[string]string, config model.GameConfig) []model.Category {
+	kindFilter := make(map[model.CategoryKind]bool, len(config.Categories))
+	for _, k := range config.Categories {
+		kindFilter[k] = true
+	}
+	shouldInclude := func(kind model.CategoryKind) bool {
+		if len(kindFilter) == 0 {
+			return true
+		}
+		return kindFilter[kind]
+	}
 	seenTeams := map[string]bool{}
 	seenPastTeams := map[string]bool{}
 	seenCountries := map[string]bool{}
@@ -98,7 +194,7 @@ func candidateCategories(players []model.Player, teammateMap map[string]map[stri
 	var categories []model.Category
 
 	for _, p := range players {
-		if p.CurrentTeamName != "" && !seenTeams[p.CurrentTeamName] {
+		if shouldInclude(model.KindCurrentTeam) && p.CurrentTeamName != "" && !seenTeams[p.CurrentTeamName] {
 			seenTeams[p.CurrentTeamName] = true
 			categories = append(categories, model.Category{
 				Kind:     model.KindCurrentTeam,
@@ -107,7 +203,7 @@ func candidateCategories(players []model.Player, teammateMap map[string]map[stri
 				ImageUrl: p.CurrentTeamLogo,
 			})
 		}
-		if p.CountryCode != "" && !seenCountries[p.CountryCode] {
+		if shouldInclude(model.KindCountry) && p.CountryCode != "" && !seenCountries[p.CountryCode] {
 			seenCountries[p.CountryCode] = true
 			code := strings.ToLower(p.CountryCode)
 			categories = append(categories, model.Category{
@@ -117,7 +213,7 @@ func candidateCategories(players []model.Player, teammateMap map[string]map[stri
 				ImageUrl: "https://flagcdn.com/w80/" + code + ".png",
 			})
 		}
-		if p.Role != nil && !seenRoles[*p.Role] {
+		if shouldInclude(model.KindRole) && p.Role != nil && !seenRoles[*p.Role] {
 			seenRoles[*p.Role] = true
 			categories = append(categories, model.Category{
 				Kind:  model.KindRole,
@@ -125,7 +221,7 @@ func candidateCategories(players []model.Player, teammateMap map[string]map[stri
 				Label: "Rol: " + string(*p.Role),
 			})
 		}
-		if p.SignatureAgentName != "" && !seenAgents[p.SignatureAgentName] {
+		if shouldInclude(model.KindAgent) && p.SignatureAgentName != "" && !seenAgents[p.SignatureAgentName] {
 			seenAgents[p.SignatureAgentName] = true
 			categories = append(categories, model.Category{
 				Kind:  model.KindAgent,
@@ -134,61 +230,69 @@ func candidateCategories(players []model.Player, teammateMap map[string]map[stri
 			})
 		}
 		// Past teams
-		for _, pt := range p.PastTeamNames {
-			if pt != "" && !seenPastTeams[pt] {
-				seenPastTeams[pt] = true
-				logo := teamLogoMap[pt]
-				categories = append(categories, model.Category{
-					Kind:     model.KindPastTeam,
-					Value:    pt,
-					Label:    "Jugó en " + pt,
-					ImageUrl: logo,
-				})
+		if shouldInclude(model.KindPastTeam) {
+			for _, pt := range p.PastTeamNames {
+				if pt != "" && !seenPastTeams[pt] {
+					seenPastTeams[pt] = true
+					logo := teamLogoMap[pt]
+					categories = append(categories, model.Category{
+						Kind:     model.KindPastTeam,
+						Value:    pt,
+						Label:    "Jugó en " + pt,
+						ImageUrl: logo,
+					})
+				}
 			}
 		}
 	}
 
 	// is_captain es binaria: si hay al menos un capitán entre los
 	// jugadores, se agrega como categoría candidata.
-	for _, p := range players {
-		if p.IsCaptain {
-			categories = append(categories, model.Category{
-				Kind:  model.KindIsCaptain,
-				Value: "true",
-				Label: "Es/fue IGL o capitán",
-			})
-			break
+	if shouldInclude(model.KindIsCaptain) {
+		for _, p := range players {
+			if p.IsCaptain {
+				categories = append(categories, model.Category{
+					Kind:  model.KindIsCaptain,
+					Value: "true",
+					Label: "Es/fue IGL o capitán",
+				})
+				break
+			}
 		}
 	}
 
 	// Categorías de compañero: una por cada jugador que tenga al menos
 	// un compañero de equipo ACTUAL. La etiqueta usa "Juega con"
 	// porque la validación solo considera el equipo actual (no pasado).
-	seenTeammate := map[string]bool{}
-	for _, p := range players {
-		if len(teammateMap[p.Alias]) > 0 && !seenTeammate[p.Alias] {
-			seenTeammate[p.Alias] = true
-			categories = append(categories, model.Category{
-				Kind:     model.KindTeammate,
-				Value:    p.Alias,
-				Label:    "Juega con " + p.Alias,
-				ImageUrl: p.AvatarURL,
-			})
+	if shouldInclude(model.KindTeammate) {
+		seenTeammate := map[string]bool{}
+		for _, p := range players {
+			if len(teammateMap[p.Alias]) > 0 && !seenTeammate[p.Alias] {
+				seenTeammate[p.Alias] = true
+				categories = append(categories, model.Category{
+					Kind:     model.KindTeammate,
+					Value:    p.Alias,
+					Label:    "Juega con " + p.Alias,
+					ImageUrl: p.AvatarURL,
+				})
+			}
 		}
 	}
 
 	// Categorías de título: una por cada título único que al menos un
 	// jugador haya ganado (ej: "Ganó Champions Tour 2024: Champions").
-	seenTitles := map[string]bool{}
-	for _, p := range players {
-		for _, t := range p.Titles {
-			if t != "" && !seenTitles[t] {
-				seenTitles[t] = true
-				categories = append(categories, model.Category{
-					Kind:  model.KindTitle,
-					Value: t,
-					Label: "Ganó " + t,
-				})
+	if shouldInclude(model.KindTitle) {
+		seenTitles := map[string]bool{}
+		for _, p := range players {
+			for _, t := range p.Titles {
+				if t != "" && !seenTitles[t] {
+					seenTitles[t] = true
+					categories = append(categories, model.Category{
+						Kind:  model.KindTitle,
+						Value: t,
+						Label: "Ganó " + t,
+					})
+				}
 			}
 		}
 	}
@@ -372,10 +476,17 @@ const maxGenerationAttempts = 200
 // en vez de esperar a tener las 6 categorías completas para descubrir
 // que el tablero entero falla (que es lo que hacía una versión anterior,
 // y fallaba seguido con pocos jugadores/categorías).
-func (e *GameEngine) GenerateBoard(id string) (*Board, error) {
+//
+// Si config no es cero, se aplican filtros de liga y categorías.
+func (e *GameEngine) GenerateBoard(id string, config model.GameConfig) (*Board, error) {
 	players, err := e.store.AllPlayers()
 	if err != nil {
 		return nil, err
+	}
+
+	players = filterPlayersByLeague(players, config.Leagues)
+	if len(players) == 0 {
+		return nil, ErrCannotGenerateBoard
 	}
 
 	teammateMap := buildTeammateMap(players)
@@ -385,7 +496,7 @@ func (e *GameEngine) GenerateBoard(id string) (*Board, error) {
 			teamLogoMap[p.CurrentTeamName] = p.CurrentTeamLogo
 		}
 	}
-	candidates := candidateCategories(players, teammateMap, teamLogoMap)
+	candidates := candidateCategories(players, teammateMap, teamLogoMap, config)
 	if len(candidates) < boardSize*2 {
 		return nil, ErrCannotGenerateBoard
 	}
@@ -401,7 +512,7 @@ func (e *GameEngine) GenerateBoard(id string) (*Board, error) {
 		// y deja la invariante "todo tablero devuelto es 100% jugable"
 		// blindada ante futuros cambios en la lógica incremental.
 		if boardIsFullyValid(players, rows, cols, teammateMap) {
-			board := &Board{ID: id, Rows: rows, Cols: cols}
+			board := &Board{ID: id, Rows: rows, Cols: cols, Players: players}
 			for i := range board.Cells {
 				for j := range board.Cells[i] {
 					board.Cells[i][j].OwnerPlayer = -1
@@ -558,22 +669,24 @@ func (e *GameEngine) CheckGuess(b *Board, row, col int, playerAlias string) (cor
 // pero NO modifica el estado de la celda y NO rechaza celdas ya respondidas.
 // Es la versión para el multiplayer con steal, donde cualquier celda se puede
 // volver a responder en cualquier momento.
-func (e *GameEngine) VerifyGuess(b *Board, row, col int, playerAlias string) (correct bool, matchedPlayer *model.Player, err error) {
+// Verifica que playerAlias no esté en guessedAliases (anti-repetición).
+func (e *GameEngine) VerifyGuess(b *Board, row, col int, playerAlias string, guessedAliases []string) (correct bool, matchedPlayer *model.Player, err error) {
 	if row < 0 || row >= boardSize || col < 0 || col >= boardSize {
 		return false, nil, ErrInvalidCell
 	}
 
-	players, err := e.store.AllPlayers()
-	if err != nil {
-		return false, nil, err
+	for _, a := range guessedAliases {
+		if a == playerAlias {
+			return false, nil, ErrAliasAlreadyGuessed
+		}
 	}
 
-	teammateMap := buildTeammateMap(players)
+	teammateMap := buildTeammateMap(b.Players)
 	rowCat := b.Rows[row]
 	colCat := b.Cols[col]
 
-	for i := range players {
-		p := players[i]
+	for i := range b.Players {
+		p := b.Players[i]
 		if p.Alias != playerAlias {
 			continue
 		}

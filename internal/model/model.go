@@ -79,3 +79,13 @@ type Category struct {
 	// logo de equipo, etc.) para mostrar en la celda de categoría.
 	ImageUrl string
 }
+
+type GameConfig struct {
+	StealEnabled bool
+	Categories   []CategoryKind
+	Leagues      []string
+}
+
+func DefaultGameConfig() GameConfig {
+	return GameConfig{StealEnabled: true}
+}

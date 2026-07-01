@@ -23,22 +23,14 @@ type PlayerSlot struct {
 	Alias     string
 }
 
-type RoomSettings struct {
-	StealEnabled bool
-}
-
 type Room struct {
 	Code      string
 	Players   [2]*PlayerSlot
 	Board     *Board
 	Turn      int
 	Status    RoomStatus
-	Settings  RoomSettings
+	Config    model.GameConfig
 	CreatedAt time.Time
-}
-
-func DefaultRoomSettings() RoomSettings {
-	return RoomSettings{StealEnabled: true}
 }
 
 type RoomManager struct {
@@ -54,7 +46,7 @@ func NewRoomManager(engine *GameEngine) *RoomManager {
 	}
 }
 
-func (rm *RoomManager) CreateRoom() (*Room, error) {
+func (rm *RoomManager) CreateRoom(config model.GameConfig) (*Room, error) {
 	code, err := generateRoomCode()
 	if err != nil {
 		return nil, err
@@ -67,7 +59,7 @@ func (rm *RoomManager) CreateRoom() (*Room, error) {
 			{},
 		},
 		Status:    RoomWaiting,
-		Settings:  DefaultRoomSettings(),
+		Config:    config,
 		CreatedAt: time.Now(),
 	}
 
@@ -96,7 +88,7 @@ func (rm *RoomManager) JoinRoom(code string) (*Room, int, error) {
 	room.Players[1].Connected = true
 	room.Status = RoomPlaying
 
-	board, err := rm.engine.GenerateBoard(code)
+	board, err := rm.engine.GenerateBoard(code, room.Config)
 	if err != nil {
 		room.Status = RoomWaiting
 		room.Players[1].Connected = false
@@ -115,7 +107,7 @@ func (rm *RoomManager) GetRoom(code string) *Room {
 }
 
 func (rm *RoomManager) ResetRoom(room *Room) error {
-	board, err := rm.engine.GenerateBoard(room.Code)
+	board, err := rm.engine.GenerateBoard(room.Code, room.Config)
 	if err != nil {
 		return err
 	}
@@ -133,22 +125,28 @@ func (rm *RoomManager) HandleGuess(room *Room, playerIdx int, row, col int, play
 		return false, nil, false, -1, nil, errors.New("no es tu turno")
 	}
 
-	// VerifyGuess no modifica el estado de la celda ni rechaza celdas ya respondidas,
-	// permitiendo el steal: cualquier celda se puede responder en cualquier momento.
-	correct, matchedPlayer, err = rm.engine.VerifyGuess(room.Board, row, col, playerAlias)
+	cell := room.Board.Cells[row][col]
+
+	// No-steal: celda con dueño no se puede re-responder
+	if !room.Config.StealEnabled && cell.OwnerPlayer != -1 {
+		return false, nil, false, -1, nil, errors.New("celda ya ocupada, steal desactivado")
+	}
+
+	correct, matchedPlayer, err = rm.engine.VerifyGuess(room.Board, row, col, playerAlias, cell.AllGuessedAliases)
 	if err != nil {
 		return false, nil, false, -1, nil, err
 	}
 
 	if correct {
 		room.Board.Cells[row][col] = CellState{
-			Answered:       true,
-			PlayerAlias:    matchedPlayer.Alias,
-			TeamName:       matchedPlayer.CurrentTeamName,
-			AvatarURL:      matchedPlayer.AvatarURL,
-			LastGuessAlias: matchedPlayer.Alias,
-			LastGuessWrong: false,
-			OwnerPlayer:    playerIdx,
+			Answered:          true,
+			PlayerAlias:       matchedPlayer.Alias,
+			TeamName:          matchedPlayer.CurrentTeamName,
+			AvatarURL:         matchedPlayer.AvatarURL,
+			LastGuessAlias:    matchedPlayer.Alias,
+			LastGuessWrong:    false,
+			OwnerPlayer:       playerIdx,
+			AllGuessedAliases: append(cell.AllGuessedAliases, playerAlias),
 		}
 
 		// Win check: el jugador actual necesita 3 en raya de celdas que LE PERTENEZCAN
@@ -186,9 +184,9 @@ func (rm *RoomManager) HandleGuess(room *Room, playerIdx int, row, col int, play
 		}
 	} else {
 		// Respuesta incorrecta: actualizar display, pero NO cambiar el OwnerPlayer
-		cell := room.Board.Cells[row][col]
 		cell.LastGuessAlias = playerAlias
 		cell.LastGuessWrong = true
+		cell.AllGuessedAliases = append(cell.AllGuessedAliases, playerAlias)
 		room.Board.Cells[row][col] = cell
 	}
 

@@ -4,6 +4,8 @@ import (
 	"math/rand"
 	"testing"
 	"time"
+
+	"valo-tic-tac-toe-backend/internal/model"
 )
 
 func TestManySeedsRobustness(t *testing.T) {
@@ -12,7 +14,7 @@ func TestManySeedsRobustness(t *testing.T) {
 	start := time.Now()
 	for seed := int64(0); seed < 200; seed++ {
 		engine := NewGameEngine(store, rand.New(rand.NewSource(seed)))
-		_, err := engine.GenerateBoard("test")
+		_, err := engine.GenerateBoard("test", model.DefaultGameConfig())
 		if err != nil {
 			failures++
 		}
